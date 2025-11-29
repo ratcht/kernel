@@ -1,6 +1,5 @@
 /*
- * no bank conflicts reduction case:
- *  start at large stride, work down
+ * unroll just the last loop: fixed to work for different sizes
  */
 
 #include <cuda_device_runtime_api.h>
@@ -12,8 +11,7 @@
 #include <stdio.h>
 #include <math.h>
 
-#define SIZE 16
-#define SHMEM_SIZE 16 * sizeof(float)
+#define SIZE 128
 
 __device__ void warpReduce(volatile float* shmem, int tid) {
   shmem[tid] += shmem[tid + 32];
@@ -24,12 +22,16 @@ __device__ void warpReduce(volatile float* shmem, int tid) {
   shmem[tid] += shmem[tid + 1];
 }
 
-__global__ void reduction(float *v, float *v_r) {
-  __shared__ float psum[SHMEM_SIZE];
+__global__ void reduction(float *v, float *v_r, int n) {
+  __shared__ float psum[SIZE];
 
   int tid = blockIdx.x * (blockDim.x * 2) + threadIdx.x;
 
-  psum[threadIdx.x] = v[tid] + v[tid + blockDim.x];
+  // Bounds checking
+  psum[threadIdx.x] = 0;
+  if (tid < n) psum[threadIdx.x] = v[tid];
+  if (tid + blockDim.x < n) psum[threadIdx.x] += v[tid + blockDim.x];
+
   __syncthreads();
 
   for (int s = blockDim.x/2; s > 32; s >>= 1) { // iterate strides in block
@@ -69,7 +71,7 @@ int main() {
 
   printf("Running on GPU %d: %s\n", device, prop.name);
 
-  int n = 1 << 6; // vector size of 2^3
+  int n = 1 << 22;
   int bytes = sizeof(float) * n;
 
   float *h_v, *h_v_r;
@@ -85,33 +87,38 @@ int main() {
   curandGenerator_t prng;
   curandCreateGenerator(&prng, CURAND_RNG_PSEUDO_DEFAULT);
 
-  curandSetPseudoRandomGeneratorSeed(prng, 42);
+  curandSetPseudoRandomGeneratorSeed(prng, 462);
 
   curandGenerateUniform(prng, d_v, n);
 
   // print vector
   cudaMemcpy(h_v, d_v, bytes, cudaMemcpyDeviceToHost);
-  printVector(h_v, n, "V");
+  // printVector(h_v, n, "V");
 
   printf("\n");
 
   int NUM_THREADS = SIZE;
   int NUM_BLOCKS = (n + NUM_THREADS - 1) / (NUM_THREADS * 2);
 
-  reduction<<<NUM_BLOCKS, NUM_THREADS>>>(d_v, d_v_r);
+  reduction<<<NUM_BLOCKS, NUM_THREADS>>>(d_v, d_v_r, n);
 
-  reduction<<<1, NUM_THREADS>>>(d_v_r, d_v_r);
+  int remaining = NUM_BLOCKS;
+  while (remaining > 1) {
+    int blocks = (remaining + NUM_THREADS * 2 - 1) / (NUM_THREADS * 2);
+    reduction<<<blocks, NUM_THREADS>>>(d_v_r, d_v_r, remaining);
+    remaining = blocks;
+  }
 
 
   cudaMemcpy(h_v_r, d_v_r, bytes, cudaMemcpyDeviceToHost);
-  printVector(h_v_r, n, "RESULT");
+  // printVector(h_v_r, n, "RESULT");
 
   float psum = 0;
   for (int i = 0; i < n; i++) {
     psum += h_v[i];
   }
-
-  assert(fabsf(psum - h_v_r[0]) < 1e-3);
+  printf("CPU sum: %f, GPU sum: %f, diff: %f\n", psum, h_v_r[0], fabsf(psum - h_v_r[0]));
+  assert(fabsf(psum - h_v_r[0]) < 1e-4 * psum);
   printf("\nsuccessful\n");
 
   cudaFree(d_v); cudaFree(d_v_r);
