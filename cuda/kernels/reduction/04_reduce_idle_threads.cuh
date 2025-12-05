@@ -1,5 +1,5 @@
-#ifndef REDUCTION_SEQUENTIAL_ADDRESSING_CUH
-#define REDUCTION_SEQUENTIAL_ADDRESSING_CUH
+#ifndef REDUCTION_REDUCE_IDLE_THREADS_CUH
+#define REDUCTION_REDUCE_IDLE_THREADS_CUH
 
 #include <cuda_runtime.h>
 
@@ -9,7 +9,7 @@
 
 #define REDUCTION_SEQUENTIAL_SIZE 16
 
-__global__ void reductionSequentialAddressing(float *v, float *v_r) {
+__global__ void reductionReduceIdleThreads(float *v, float *v_r) {
   __shared__ float psum[REDUCTION_SEQUENTIAL_SIZE];
 
   int tid = blockIdx.x * (blockDim.x * 2) + threadIdx.x;

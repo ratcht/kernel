@@ -167,7 +167,7 @@ void run_no_bank_conflicts_benchmark(int n) {
   curandDestroyGenerator(prng);
 }
 
-void run_sequential_addressing_benchmark(int n) {
+void run_reduce_idle_threads_benchmark(int n) {
   int bytes = sizeof(float) * n;
   float *h_v, *h_v_r;
   float *d_v, *d_v_r;
@@ -190,8 +190,8 @@ void run_sequential_addressing_benchmark(int n) {
   cudaEventCreate(&stop);
 
   cudaEventRecord(start);
-  run_reduction_sequential_addressing(d_v, d_v_r, n);
-  run_reduction_sequential_addressing(d_v_r, d_v_r, REDUCTION_SEQUENTIAL_SIZE);
+  run_reduction_reduce_idle_threads(d_v, d_v_r, n);
+  run_reduction_reduce_idle_threads(d_v_r, d_v_r, REDUCTION_SEQUENTIAL_SIZE);
   cudaEventRecord(stop);
 
   cudaEventSynchronize(stop);
@@ -392,7 +392,7 @@ int main(int argc, char** argv) {
     printf("  0 - divergent\n");
     printf("  1 - bank conflicts\n");
     printf("  2 - no bank conflicts\n");
-    printf("  3 - sequential addressing\n");
+    printf("  3 - reduce idle threads\n");
     printf("  4 - first add during load\n");
     printf("  5 - unroll last warp\n");
     printf("  6 - completely unrolled\n");
@@ -415,7 +415,7 @@ int main(int argc, char** argv) {
       run_no_bank_conflicts_benchmark(n);
       break;
     case 3:
-      run_sequential_addressing_benchmark(n);
+      run_reduce_idle_threads_benchmark(n);
       break;
     case 4:
       run_first_add_during_load_benchmark(n);
